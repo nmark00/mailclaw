@@ -1,4 +1,4 @@
-![Fruitmail](assets/fruitmail.jpg)
+<img src="assets/fruitmail.jpg" alt="Fruitmail" width="280" />
 
 # Fruitmail (Fast & Safe)
 
