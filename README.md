@@ -70,7 +70,7 @@ Fast SQLite-based search for Apple Mail.app with full body content support.
 Available as a skill on [ClawHub](https://clawhub.ai/gumadeiras/apple-mail-search-safe) for [OpenClaw](https://github.com/openclaw/openclaw) users. Install with:
 
 ```bash
-clawhub install fruitmail-safe
+clawhub install apple-mail-search-safe
 ```
 
 ## 📝 License
