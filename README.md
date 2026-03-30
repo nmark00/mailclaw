@@ -1,6 +1,6 @@
 <img src="assets/fruitmail.jpg" alt="Fruitmail" width="280" />
 
-# Fruitmail (Fast & Safe)
+# Fruitmail CLI
 
 Fast SQLite-based search for Apple Mail.app with full body content support.
 
