@@ -1,3 +1,5 @@
+![Fruitmail](assets/fruitmail.jpg)
+
 # Fruitmail (Fast & Safe)
 
 Fast SQLite-based search for Apple Mail.app with full body content support.
