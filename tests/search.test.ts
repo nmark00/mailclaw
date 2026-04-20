@@ -110,6 +110,24 @@ describe('Integration: Search CLI', () => {
         expect(json[0].subject).toBe('Your Invoice from Amazon');
     });
 
+    it('should support offset with limit', async () => {
+        const out = await runCli('-n 1 -o 2 search --days 3650 --json');
+        const json = JSON.parse(out);
+        expect(json).toHaveLength(1);
+        expect(json[0].id).toBe(101);
+        expect(json[0].subject).toBe('Hello Mom');
+    });
+
+    it('should return empty array when offset is beyond results', async () => {
+        const out = await runCli('-n 10 -o 10 search --days 3650 --json');
+        expect(out).toBe('[]');
+    });
+
+    it('should apply offset to shortcut commands too', async () => {
+        const out = await runCli('-o 1 unread --json');
+        expect(out).toBe('[]');
+    });
+
     it('should find emails by subject phrase', async () => {
         const out = await runCli('search --subject "invoice" --days 3650 --json');
         const json = JSON.parse(out);

@@ -21,6 +21,7 @@ program
 // Global Options
 program
     .option('-n, --limit <number>', 'Max results', '20')
+    .option('-o, --offset <number>', 'Skip first N results', '0')
     .option('-j, --json', 'Output as JSON')
     .option('-c, --csv', 'Output as CSV')
     .option('-q, --quiet', 'Minimal output')
@@ -30,6 +31,7 @@ program
 // Helper Types
 interface QueryOptions {
     limit: string;
+    offset: string;
     json?: boolean;
     csv?: boolean;
     quiet?: boolean;
@@ -359,6 +361,11 @@ function outputResults(rows: any[], options: QueryOptions) {
 
 // Unified Search Builder
 async function runSearch(filters: any, options: QueryOptions) {
+    const offset = Number.parseInt(options.offset ?? '0', 10);
+    if (!Number.isInteger(offset) || offset < 0) {
+        throw new Error('Invalid --offset: expected a non-negative integer');
+    }
+
     const { db, cleanUp } = await getDb(options);
 
     try {
@@ -446,9 +453,10 @@ async function runSearch(filters: any, options: QueryOptions) {
       WHERE ${conditions.join(' AND ')}
       ORDER BY m.date_sent DESC
       LIMIT ?
+      OFFSET ?
     `;
 
-        params.push(parseInt(options.limit));
+        params.push(parseInt(options.limit), offset);
 
         // Synchronous execution
         const rows = db.prepare(sql).all(params);
