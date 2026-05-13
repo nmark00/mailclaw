@@ -28,6 +28,7 @@
     "dist",
     "bin",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "type": "commonjs",
