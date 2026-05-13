@@ -71,7 +71,9 @@ Fast SQLite-based search for Apple Mail.app with full body content support.
 
 - `./scripts/committer "message" path...`: stage only the listed paths and create a commit
 - `./scripts/release check 1.1.1`: verify synced release versions and run the release test gates
-- `./scripts/release run 1.1.1`: bump versions, run tests, package artifacts, tag, push, and publish the GitHub release
+- `./scripts/release run 1.1.1`: bump versions, run tests, package artifacts, tag, push, wait for the release workflow, publish npm, and update Homebrew
+
+Release CI publishes to npm with trusted publishing.
 
 ## 🔗 ClawHub
 
