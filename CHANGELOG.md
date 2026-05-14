@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.1.2 - 2026-05-14
+
+### Fixes
+
+- Fixed `fruitmail -V` to report the package version instead of a stale hardcoded version.
+- Fixed npm, git, and Homebrew installs to run the same built CLI entrypoint.
+
 ## 1.1.1 - 2026-03-30
 
 Initial release.

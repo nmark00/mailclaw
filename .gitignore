@@ -1,3 +1,6 @@
 .DS_Store
-/dist
+/dist/*
+!/dist/
+!/dist/*.js
+/dist/release
 /node_modules

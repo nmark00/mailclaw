@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test": "jest"
+    "test": "npm run build && jest"
   },
   "repository": {
     "type": "git",
@@ -24,6 +24,9 @@
   ],
   "author": "Gustavo Madeira Santana",
   "license": "ISC",
+  "engines": {
+    "node": ">=20 <27"
+  },
   "files": [
     "dist",
     "bin",
@@ -37,7 +40,7 @@
   },
   "homepage": "https://github.com/gumadeiras/fruitmail-cli#readme",
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.10.0",
     "chalk": "^4.1.2",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.2"
