@@ -31,9 +31,6 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "FRUITMAIL_RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Update npm
-        run: npm install -g npm@latest
-
       - name: Check tap token
         run: |
           if [ -z "$TAP_TOKEN" ]; then
