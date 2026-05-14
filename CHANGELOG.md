@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changes
+
+- Documented the local release wrapper and normalized release workflow naming.
+
 ## 1.1.2 - 2026-05-14
 
 ### Fixes
