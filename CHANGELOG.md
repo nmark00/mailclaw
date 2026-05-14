@@ -4,6 +4,7 @@
 
 ### Changes
 
+- Renamed the published npm and Homebrew package to `fruitmail`.
 - Documented the local release wrapper and normalized release workflow naming.
 
 ## 1.1.2 - 2026-05-14

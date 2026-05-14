@@ -1,6 +1,6 @@
 <img src="assets/fruitmail.jpg" alt="Fruitmail" width="280" />
 
-# Fruitmail CLI
+# Fruitmail
 
 Fast SQLite-based search for Apple Mail.app with full body content support.
 
@@ -19,12 +19,12 @@ Fast SQLite-based search for Apple Mail.app with full body content support.
  **Using Homebrew:**
  ```bash
  brew tap gumadeiras/tap
- brew install fruitmail-cli
+ brew install fruitmail
  ```
 
  **Using npm:**
  ```bash
- npm install -g apple-mail-search-cli
+ npm install -g fruitmail
  ```
  
  **Using Bash (Zero dependency):**
