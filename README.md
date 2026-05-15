@@ -2,6 +2,9 @@
 
 # Fruitmail CLI
 
+> This package has been renamed. Install `fruitmail` now:
+> `npm install -g fruitmail`
+
 Fast SQLite-based search for Apple Mail.app with full body content support.
 
 ![macOS](https://img.shields.io/badge/macOS-10.15+-black?style=flat-square&logo=apple)

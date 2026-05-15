@@ -14,7 +14,6 @@ jobs:
     runs-on: macos-15
     env:
       GH_TOKEN: ${{ github.token }}
-      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -30,13 +29,6 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "FRUITMAIL_RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
-
-      - name: Check tap token
-        run: |
-          if [ -z "$TAP_TOKEN" ]; then
-            echo "missing HOMEBREW_TAP_TOKEN secret" >&2
-            exit 1
-          fi
 
       - name: Install dependencies
         run: npm ci
@@ -57,6 +49,7 @@ jobs:
 
       - name: Write release notes
         run: |
+          # shellcheck disable=SC2016
           PACKAGE_FILE="$(node -p 'const pkg=require("./package.json"); `${pkg.name.replace(/^@/, "").replace(/\//g, "-")}-${process.env.FRUITMAIL_RELEASE_VERSION}.tgz`')"
 
           printf '%s\n' \
@@ -72,6 +65,7 @@ jobs:
 
       - name: Publish GitHub release
         run: |
+          # shellcheck disable=SC2016
           PACKAGE_FILE="$(node -p 'const pkg=require("./package.json"); `${pkg.name.replace(/^@/, "").replace(/\//g, "-")}-${process.env.FRUITMAIL_RELEASE_VERSION}.tgz`')"
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
@@ -94,6 +88,7 @@ jobs:
       - name: Publish npm package
         run: |
           package_name="$(node -p 'require("./package.json").name')"
+          # shellcheck disable=SC2016
           PACKAGE_FILE="$(node -p 'const pkg=require("./package.json"); `${pkg.name.replace(/^@/, "").replace(/\//g, "-")}-${process.env.FRUITMAIL_RELEASE_VERSION}.tgz`')"
 
           if npm view "${package_name}@${FRUITMAIL_RELEASE_VERSION}" version >/dev/null 2>&1; then
@@ -102,38 +97,3 @@ jobs:
           fi
 
           npm publish "dist/release/${PACKAGE_FILE}" --access public
-
-      - name: Check out Homebrew tap
-        uses: actions/checkout@v6
-        with:
-          repository: gumadeiras/homebrew-tap
-          token: ${{ env.TAP_TOKEN }}
-          path: homebrew-tap
-
-      - name: Update Homebrew formula
-        run: |
-          PACKAGE_FILE="$(node -p 'const pkg=require("./package.json"); `${pkg.name.replace(/^@/, "").replace(/\//g, "-")}-${process.env.FRUITMAIL_RELEASE_VERSION}.tgz`')"
-          sha256="$(awk -v file="$PACKAGE_FILE" '$2 == file { print $1 }' dist/release/SHA256SUMS.txt)"
-          if [ -z "$sha256" ]; then
-            echo "missing checksum for $PACKAGE_FILE" >&2
-            exit 1
-          fi
-
-          python homebrew-tap/scripts/update_formula.py \
-            --formula homebrew-tap/Formula/fruitmail-cli.rb \
-            --url "https://github.com/gumadeiras/fruitmail-cli/releases/download/v${FRUITMAIL_RELEASE_VERSION}/${PACKAGE_FILE}" \
-            --sha256 "$sha256"
-
-      - name: Commit and push formula
-        working-directory: homebrew-tap
-        run: |
-          if git diff --quiet -- Formula/fruitmail-cli.rb; then
-            echo "Formula/fruitmail-cli.rb already up to date"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/fruitmail-cli.rb
-          git commit -m "Update fruitmail-cli to ${FRUITMAIL_RELEASE_VERSION}"
-          git push

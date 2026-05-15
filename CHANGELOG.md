@@ -4,6 +4,7 @@
 
 ### Changes
 
+- Added the final `apple-mail-search-cli` release notice. Install `fruitmail` now.
 - Documented the local release wrapper and normalized release workflow naming.
 
 ## 1.1.2 - 2026-05-14
