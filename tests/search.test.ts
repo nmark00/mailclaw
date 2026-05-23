@@ -1,6 +1,7 @@
 import { exec } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 
 // Helper to create a fake DB with Apple Mail schema
@@ -48,9 +49,11 @@ function setupFakeDb(filePath: string) {
 
     db.prepare("INSERT INTO subjects (ROWID, subject) VALUES (1, 'Your Invoice from Amazon')").run();
     db.prepare("INSERT INTO addresses (ROWID, address, comment) VALUES (1, 'no-reply@amazon.com', 'Amazon')").run();
+    db.prepare("INSERT INTO addresses (ROWID, address, comment) VALUES (3, 'billing@example.com', 'Billing')").run();
     db.prepare("INSERT INTO mailboxes (ROWID, display_name) VALUES (10, 'Inbox')").run();
     db.prepare("INSERT INTO mailboxes (ROWID, display_name) VALUES (11, 'deleted messages')").run();
     db.prepare('INSERT INTO messages (ROWID, date_sent, subject, sender, read, deleted, mailbox) VALUES (100, ?, 1, 1, 0, 0, 10)').run(now);
+    db.prepare('INSERT INTO recipients (message, address) VALUES (100, 3)').run();
 
     // 2. "Hello Mom" (Read, Old, Attachment)
     const old = now - (30 * 86400); // 30 days ago
@@ -72,56 +75,68 @@ function setupFakeDb(filePath: string) {
 
 describe('Integration: Search CLI', () => {
     const tempDb = path.join(__dirname, 'test.db');
-    // Use compiled JS for integration test or ts-node if available. 
-    // We'll trust that we can run the logic by importing main modules or simplified execution.
-    // Actually, simplest is to run the bin via child_process using the temp DB.
-
+    let tempBinDir = '';
     const binPath = path.resolve(__dirname, '../bin/fruitmail');
 
     beforeAll(() => {
         process.env.FORCE_COLOR = '0'; // Disable chalk colors
         try { fs.unlinkSync(tempDb); } catch { }
         setupFakeDb(tempDb);
+
+        tempBinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fruitmail-test-bin-'));
+        const osascriptPath = path.join(tempBinDir, 'osascript');
+        fs.writeFileSync(osascriptPath, `#!/usr/bin/env bash
+payload="$*"
+if [[ "$payload" != *"-e"* ]]; then
+  payload="$(cat)"
+fi
+case "$payload" in
+  *"return content of foundMsg"*|*"return content of msg"*) printf 'Mock Body' ;;
+  *"open foundMsg"*|*"open msg"*) printf 'OK' ;;
+  *) printf '__FRUITMAIL_NOT_FOUND__' ;;
+esac
+`);
+        fs.chmodSync(osascriptPath, 0o755);
     });
 
     afterAll(() => {
         try { fs.unlinkSync(tempDb); } catch { }
+        if (tempBinDir) {
+            try { fs.rmSync(tempBinDir, { recursive: true, force: true }); } catch { }
+        }
     });
 
-    const runCli = (args: string): Promise<string> => {
+    const cliEnv = () => ({
+        ...process.env,
+        FORCE_COLOR: '0',
+        PATH: tempBinDir ? `${tempBinDir}${path.delimiter}${process.env.PATH}` : process.env.PATH
+    });
+
+    const runCommand = (command: string, rejectOnError = true): Promise<string> => {
         return new Promise((resolve, reject) => {
-            exec(`node ${binPath} --db "${tempDb}" ${args}`, {
-                env: { ...process.env, FORCE_COLOR: '0' }
-            }, (err, stdout, stderr) => {
+            exec(command, { env: cliEnv() }, (err, stdout, stderr) => {
                 if (stderr) console.log('CLI STDERR:', stderr);
-                if (err) return reject(stderr || err.message);
+                if (err && rejectOnError) return reject(stderr || err.message);
                 resolve(stdout.trim());
             });
         });
+    };
+
+    const runCli = (args: string): Promise<string> => {
+        return runCommand(`node ${binPath} --db "${tempDb}" ${args}`);
     };
 
     const runShellCli = (args: string): Promise<string> => {
         const shellPath = path.resolve(__dirname, '../fruitmail');
-
-        return new Promise((resolve, reject) => {
-            exec(`${shellPath} --db "${tempDb}" ${args}`, {
-                env: { ...process.env, FORCE_COLOR: '0' }
-            }, (err, stdout, stderr) => {
-                if (err) return reject(stderr || err.message);
-                resolve(stdout.trim());
-            });
-        });
+        return runCommand(`${shellPath} --db "${tempDb}" ${args}`);
     };
 
-    const runCliJsonFailure = (args: string): Promise<unknown> => {
-        return new Promise((resolve) => {
-            exec(`node ${binPath} --db "${tempDb}" ${args}`, {
-                env: { ...process.env, FORCE_COLOR: '0' }
-            }, (_err, stdout) => {
-                resolve(JSON.parse(stdout.trim()));
-            });
-        });
+    const runCliJsonFailure = async (args: string): Promise<unknown> => {
+        return JSON.parse(await runCommand(`node ${binPath} --db "${tempDb}" ${args}`, false));
     };
+
+    const parseJson = async (args: string) => JSON.parse(await runCli(args));
+    const parseShellJson = async (args: string) => JSON.parse(await runShellCli(args));
 
     it('should find unread emails', async () => {
         const out = await runCli('search --unread --days 3650 --json');
@@ -161,11 +176,63 @@ describe('Integration: Search CLI', () => {
     });
 
     it('should find emails by subject phrase', async () => {
-        const out = await runCli('search --subject "invoice" --days 3650 --json');
-        const json = JSON.parse(out);
+        const json = await parseJson('search --subject "invoice" --days 3650 --json');
         expect(json).toHaveLength(1);
         expect(json[0].sender).toContain('amazon.com');
         expect(json[0].mailbox).toBe('Inbox');
+    });
+
+    it.each([
+        ['subject shortcut', 'subject invoice --json', ['Your Invoice from Amazon']],
+        ['sender shortcut', 'sender mom --json', ['Hello Mom']],
+        ['recipient shortcut', 'to billing --json', ['Your Invoice from Amazon']],
+        ['recent shortcut', 'recent 7 --json', ['Very long subject that should be truncated to fit in terminal width without breaking the table layout or wrapping lines unexpectedly', 'Your Invoice from Amazon']],
+        ['sender flag', 'search --sender mom --days 3650 --json', ['Hello Mom']],
+        ['sender name flag', 'search --from-name Mom --days 3650 --json', ['Hello Mom']],
+        ['recipient flag', 'search --to billing --days 3650 --json', ['Your Invoice from Amazon']],
+        ['read flag', 'search --read --days 3650 --json', ['Very long subject that should be truncated to fit in terminal width without breaking the table layout or wrapping lines unexpectedly', 'Hello Mom']],
+        ['attachment type flag', 'search --attachment-type jpg --days 3650 --json', ['Hello Mom']]
+    ])('routes %s', async (_name, args, subjects) => {
+        const json = await parseJson(args);
+        const actualSubjects = json.map((row: any) => row.subject).sort();
+        expect(actualSubjects).toEqual([...subjects].sort());
+    });
+
+    it('should support csv, quiet empty output, body JSON, open, and copy mode', async () => {
+        await expect(runCli('search --subject invoice --days 3650 --csv')).resolves.toContain('id,date,sender,subject,mailbox');
+        await expect(runCli('search --subject missing --quiet')).resolves.toBe('');
+        await expect(runCli('body 100 --json')).resolves.toBe(JSON.stringify({ id: '100', body: 'Mock Body' }, null, 2));
+        await expect(runCli('open 100')).resolves.toBe('');
+        await expect(parseJson('--copy search --subject invoice --days 3650 --json')).resolves.toHaveLength(1);
+    });
+
+    it('should run raw queries in the Bash CLI', async () => {
+        await expect(runShellCli('query "SELECT COUNT(*) AS total FROM messages;" --json')).resolves.toBe('[{"total":4}]');
+    });
+
+    it.each([
+        ['subject shortcut', 'subject invoice --json', ['Your Invoice from Amazon']],
+        ['from alias', 'from mom --json', ['Hello Mom']],
+        ['sender name shortcut', 'from-name Mom --json', ['Hello Mom']],
+        ['recipient shortcut', 'to billing --json', ['Your Invoice from Amazon']],
+        ['unread shortcut', 'unread --json', ['Your Invoice from Amazon']],
+        ['recent shortcut', 'recent 7 --json', ['Very long subject that should be truncated to fit in terminal width without breaking the table layout or wrapping lines unexpectedly', 'Your Invoice from Amazon']],
+        ['attachments command', 'attachments --json', ['Hello Mom']],
+        ['attachment type command', 'attachment-type jpg --json', ['Hello Mom']]
+    ])('routes Bash CLI %s', async (_name, args, subjects) => {
+        const json = await parseShellJson(args);
+        expect(json.map((row: any) => row.subject).sort()).toEqual([...subjects].sort());
+    });
+
+    it('should expose Bash CLI help and stats', async () => {
+        await expect(runShellCli('--help')).resolves.toContain('fruitmail search --subject "invoice"');
+        await expect(runShellCli('stats')).resolves.toMatch(/Total messages:\s+4/);
+    });
+
+    it('should route Bash CLI body and open commands through AppleScript', async () => {
+        const body = await parseShellJson('body 100 --json');
+        expect(body).toEqual({ id: 100, body: 'Mock Body' });
+        await expect(runShellCli('open 100')).resolves.toBe('');
     });
 
     it('should let the Bash CLI pass subject flags to search', async () => {

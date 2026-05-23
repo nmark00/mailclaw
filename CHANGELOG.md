@@ -4,12 +4,12 @@
 
 ### Features
 
-- Added `--offset` / `-o` to paginate search results. Thanks to @JakubPecenka.
+- Added `--offset` / `-o` to paginate search results based on PR #1. Thanks to @JakubPecenka.
 
 ### Fixes
 
-- Fixed pnpm global installs by removing the native SQLite runtime binding.
-- Fixed the standalone Bash CLI so `fruitmail search --subject ...` and other search flags are accepted. Thanks to @JakubPecenka for reporting this.
+- Fixed pnpm global installs by removing the native SQLite runtime binding (#2). Thanks to @Mytakeon for reporting this.
+- Fixed the standalone Bash CLI so `fruitmail search --subject ...` and other search flags are accepted (#3). Thanks to @Mytakeon for reporting this.
 
 ### Changes
 
