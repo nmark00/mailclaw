@@ -72,4 +72,22 @@ if [[ "$actual_version" != "$PACKAGE_VERSION" ]]; then
     exit 1
 fi
 
+SMOKE_DB="$SMOKE_DIR/test.db" node <<'NODE'
+const { DatabaseSync } = require('node:sqlite');
+const db = new DatabaseSync(process.env.SMOKE_DB);
+db.exec(`
+  CREATE TABLE messages (
+    ROWID INTEGER PRIMARY KEY,
+    read INTEGER DEFAULT 1,
+    deleted INTEGER DEFAULT 0
+  );
+  CREATE TABLE attachments (
+    message INTEGER
+  );
+  INSERT INTO messages (ROWID, read, deleted) VALUES (1, 0, 0);
+`);
+db.close();
+NODE
+"$SMOKE_DIR/prefix/bin/fruitmail" --db "$SMOKE_DIR/test.db" stats >/dev/null
+
 echo "Wrote release assets to $OUTPUT_DIR"

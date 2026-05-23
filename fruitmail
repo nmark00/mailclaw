@@ -11,6 +11,15 @@ escape_sql() {
     echo "${1//\'/\'\'}"
 }
 
+validate_nonnegative_integer_option() {
+    local name="$1"
+    local value="$2"
+    if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+        echo "Invalid --$name: expected a non-negative integer" >&2
+        exit 1
+    fi
+}
+
 # Find the latest Mail database (searches V9+)
 find_db() {
     local db_dir
@@ -39,26 +48,45 @@ find_db() {
 
 DB_PATH="${MAIL_DB:-}"
 LIMIT=20
+OFFSET=0
 FORMAT="table"
 QUIET=0
 USE_COPY=0
 ARGS=()
+COMMAND_NAME=""
 
 # Global Options
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -n|--limit) LIMIT="$2"; shift 2 ;;
+        -o|--offset) OFFSET="$2"; shift 2 ;;
         -j|--json) FORMAT="json"; shift ;;
         -c|--csv) FORMAT="csv"; shift ;;
         -q|--quiet) QUIET=1; shift ;;
         --db) DB_PATH="$2"; shift 2 ;;
         --copy) USE_COPY=1; shift ;;
         -h|--help) ARGS+=("$1"); shift ;;
-        -*) echo "Unknown option: $1" >&2; exit 1 ;;
-        *) ARGS+=("$1"); shift ;;
+        --) shift; ARGS+=("$@"); break ;;
+        -*)
+            if [[ "$COMMAND_NAME" == "search" ]]; then
+                ARGS+=("$1")
+                shift
+            else
+                echo "Unknown option: $1" >&2
+                exit 1
+            fi
+            ;;
+        *)
+            [[ -z "$COMMAND_NAME" ]] && COMMAND_NAME="$1"
+            ARGS+=("$1")
+            shift
+            ;;
     esac
 done
 set -- "${ARGS[@]}"
+
+validate_nonnegative_integer_option limit "$LIMIT"
+validate_nonnegative_integer_option offset "$OFFSET"
 
 CMD="${1:-help}"
 shift || true
@@ -175,7 +203,7 @@ build_search_query() {
         $joins
         WHERE $criteria AND m.deleted = 0
         ORDER BY m.date_sent DESC
-        LIMIT $LIMIT;
+        LIMIT $LIMIT OFFSET $OFFSET;
     "
 }
 
@@ -211,7 +239,7 @@ case "$CMD" in
             LEFT JOIN addresses a ON m.sender = a.ROWID
             JOIN attachments att ON m.ROWID = att.message
             ORDER BY m.date_sent DESC
-            LIMIT $LIMIT;
+            LIMIT $LIMIT OFFSET $OFFSET;
         "
         ;;
         
@@ -230,7 +258,7 @@ case "$CMD" in
             JOIN attachments att ON m.ROWID = att.message
             WHERE att.name LIKE '%.${EXT}'
             ORDER BY m.date_sent DESC
-            LIMIT $LIMIT;
+            LIMIT $LIMIT OFFSET $OFFSET;
         "
         ;;
 
@@ -347,6 +375,15 @@ fruitmail - Fast Apple Mail search via SQLite
 version 1.2.0 (Unified Search)
 
 Usage: fruitmail [options] <command> [args]
+
+Options:
+  -n, --limit <num>           Max results (default: 20)
+  -o, --offset <num>          Skip first N results (default: 0)
+  -j, --json                  Output as JSON
+  -c, --csv                   Output as CSV
+  -q, --quiet                 Minimal output
+  --db <path>                 Override database path
+  --copy                      Copy DB before query
 
 Commands:
   search [flags]              Advanced search (see flags below)

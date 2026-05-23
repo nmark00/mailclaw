@@ -2,8 +2,18 @@
 
 ## Unreleased
 
+### Features
+
+- Added `--offset` / `-o` to paginate search results. Thanks to @JakubPecenka.
+
+### Fixes
+
+- Fixed pnpm global installs by removing the native SQLite runtime binding.
+- Fixed the standalone Bash CLI so `fruitmail search --subject ...` and other search flags are accepted. Thanks to @JakubPecenka for reporting this.
+
 ### Changes
 
+- npm installs now require Node.js 22.13 or newer.
 - Renamed the published npm and Homebrew package to `fruitmail`.
 - Documented the local release wrapper and normalized release workflow naming.
 

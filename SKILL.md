@@ -12,6 +12,8 @@ Fast SQLite-based search for Apple Mail.app with full body content support.
 
 ## Installation
 
+Requires Node.js 22.13 or newer for npm installs.
+
 ```bash
 npm install -g fruitmail
 ```
@@ -56,6 +58,7 @@ fruitmail stats
 --days <n>         Last N days
 --unread           Only unread emails
 --limit <n>        Max results (default: 20)
+--offset <n>       Skip first N results (default: 0)
 --json             Output as JSON
 --copy             Copy DB before query (safest mode)
 ```
@@ -71,6 +74,9 @@ fruitmail unread --json | jq '.[] | .subject'
 
 # Find emails from Amazon
 fruitmail sender "@amazon.com" --limit 50
+
+# Page through search results
+fruitmail search --subject "invoice" --limit 20 --offset 20
 ```
 
 ## Performance

@@ -3,12 +3,12 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import Table from 'cli-table3';
-import Database from 'better-sqlite3';
 import { copyFileSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { findDbPath } from './db-finder.js';
 import { getEmailBodyByLookup, openEmailByLookup } from './mail-actions.js';
+import { SQLiteDatabase } from './sqlite.js';
 
 // Setup CLI
 const program = new Command();
@@ -17,11 +17,13 @@ const packageVersion = require('../package.json').version as string;
 program
     .name('fruitmail')
     .description('Fast Apple Mail search via SQLite')
-    .version(packageVersion);
+    .version(packageVersion)
+    .configureHelp({ showGlobalOptions: true });
 
 // Global Options
 program
     .option('-n, --limit <number>', 'Max results', '20')
+    .option('-o, --offset <number>', 'Skip first N results', '0')
     .option('-j, --json', 'Output as JSON')
     .option('-c, --csv', 'Output as CSV')
     .option('-q, --quiet', 'Minimal output')
@@ -31,11 +33,33 @@ program
 // Helper Types
 interface QueryOptions {
     limit: string;
+    offset: string;
     json?: boolean;
     csv?: boolean;
     quiet?: boolean;
     db?: string;
     copy?: boolean;
+}
+
+interface PaginationOptions {
+    limit: number;
+    offset: number;
+}
+
+function parseNonNegativeIntegerOption(value: string | undefined, name: string, defaultValue: number): number {
+    const rawValue = value ?? String(defaultValue);
+    if (!/^\d+$/.test(rawValue)) {
+        throw new Error(`Invalid --${name}: expected a non-negative integer`);
+    }
+
+    return Number.parseInt(rawValue, 10);
+}
+
+function parsePaginationOptions(options: QueryOptions): PaginationOptions {
+    return {
+        limit: parseNonNegativeIntegerOption(options.limit, 'limit', 20),
+        offset: parseNonNegativeIntegerOption(options.offset, 'offset', 0)
+    };
 }
 
 interface MessageLookupContext {
@@ -223,16 +247,11 @@ async function getDb(options: QueryOptions) {
     }
 
     // Open DB
-    // better-sqlite3 handles read-only via options
-    const db = new Database(dbFile, {
+    const db = new SQLiteDatabase(dbFile, {
         readonly: !options.copy, // Read-only unless we are working on a copy
         fileMustExist: true,
         timeout: 2000 // Busy timeout handled natively
     });
-
-    // Enable WAL mode support explicitly?
-    // better-sqlite3 usually handles it, but pragma query is safe.
-    // Actually, for read-only on main DB, we just want to read.
 
     return { db, cleanUp };
 }
@@ -360,6 +379,8 @@ function outputResults(rows: any[], options: QueryOptions) {
 
 // Unified Search Builder
 async function runSearch(filters: any, options: QueryOptions) {
+    const pagination = parsePaginationOptions(options);
+
     const { db, cleanUp } = await getDb(options);
 
     try {
@@ -447,9 +468,10 @@ async function runSearch(filters: any, options: QueryOptions) {
       WHERE ${conditions.join(' AND ')}
       ORDER BY m.date_sent DESC
       LIMIT ?
+      OFFSET ?
     `;
 
-        params.push(parseInt(options.limit));
+        params.push(pagination.limit, pagination.offset);
 
         // Synchronous execution
         const rows = db.prepare(sql).all(params);

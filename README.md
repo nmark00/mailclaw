@@ -7,6 +7,8 @@ Fast SQLite-based search for Apple Mail.app with full body content support.
 ![macOS](https://img.shields.io/badge/macOS-10.15+-black?style=flat-square&logo=apple)
 ![Shell](https://img.shields.io/badge/Shell-Bash-black?style=flat-square&logo=gnu-bash)
 
+Requires Node.js 22.13 or newer for npm installs.
+
 ## ✨ Features
 
 - **⚡ Fast:** Direct read-only SQLite access (zero-copy default)
@@ -37,6 +39,9 @@ Fast SQLite-based search for Apple Mail.app with full body content support.
  ```bash
  # Complex search
  fruitmail search --subject "invoice" --days 30 --unread
+
+ # Page through results
+ fruitmail search --subject "invoice" --limit 20 --offset 20
  
  # Search by sender
  fruitmail sender "@amazon.com"

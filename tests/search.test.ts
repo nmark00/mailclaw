@@ -1,11 +1,11 @@
-import Database from 'better-sqlite3';
 import { exec } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 
 // Helper to create a fake DB with Apple Mail schema
 function setupFakeDb(filePath: string) {
-    const db = new Database(filePath);
+    const db = new DatabaseSync(filePath);
 
     // Create Minimal Schema
     db.exec(`
@@ -80,11 +80,8 @@ describe('Integration: Search CLI', () => {
 
     beforeAll(() => {
         process.env.FORCE_COLOR = '0'; // Disable chalk colors
+        try { fs.unlinkSync(tempDb); } catch { }
         setupFakeDb(tempDb);
-        // Verify DB content directly
-        exec(`sqlite3 "${tempDb}" "SELECT COUNT(*) FROM messages m JOIN subjects s ON m.subject = s.ROWID;"`, (err, stdout) => {
-            console.log('DIRECT JOIN COUNT:', stdout);
-        });
     });
 
     afterAll(() => {
@@ -103,11 +100,64 @@ describe('Integration: Search CLI', () => {
         });
     };
 
+    const runShellCli = (args: string): Promise<string> => {
+        const shellPath = path.resolve(__dirname, '../fruitmail');
+
+        return new Promise((resolve, reject) => {
+            exec(`${shellPath} --db "${tempDb}" ${args}`, {
+                env: { ...process.env, FORCE_COLOR: '0' }
+            }, (err, stdout, stderr) => {
+                if (err) return reject(stderr || err.message);
+                resolve(stdout.trim());
+            });
+        });
+    };
+
+    const runCliJsonFailure = (args: string): Promise<unknown> => {
+        return new Promise((resolve) => {
+            exec(`node ${binPath} --db "${tempDb}" ${args}`, {
+                env: { ...process.env, FORCE_COLOR: '0' }
+            }, (_err, stdout) => {
+                resolve(JSON.parse(stdout.trim()));
+            });
+        });
+    };
+
     it('should find unread emails', async () => {
         const out = await runCli('search --unread --days 3650 --json');
         const json = JSON.parse(out);
         expect(json).toHaveLength(1);
         expect(json[0].subject).toBe('Your Invoice from Amazon');
+    });
+
+    it('should support offset with limit', async () => {
+        const out = await runCli('-n 1 -o 2 search --days 3650 --json');
+        const json = JSON.parse(out);
+        expect(json).toHaveLength(1);
+        expect(json[0].id).toBe(101);
+        expect(json[0].subject).toBe('Hello Mom');
+    });
+
+    it('should return empty array when offset is beyond results', async () => {
+        const out = await runCli('-n 10 -o 10 search --days 3650 --json');
+        expect(out).toBe('[]');
+    });
+
+    it('should apply offset to shortcut commands too', async () => {
+        const out = await runCli('-o 1 unread --json');
+        expect(out).toBe('[]');
+    });
+
+    it('should reject invalid offset values', async () => {
+        await expect(runCliJsonFailure('--offset 2x search --days 3650 --json')).resolves.toEqual({
+            error: 'Invalid --offset: expected a non-negative integer'
+        });
+    });
+
+    it('should reject invalid limit values', async () => {
+        await expect(runCliJsonFailure('--limit 2x search --days 3650 --json')).resolves.toEqual({
+            error: 'Invalid --limit: expected a non-negative integer'
+        });
     });
 
     it('should find emails by subject phrase', async () => {
@@ -116,6 +166,33 @@ describe('Integration: Search CLI', () => {
         expect(json).toHaveLength(1);
         expect(json[0].sender).toContain('amazon.com');
         expect(json[0].mailbox).toBe('Inbox');
+    });
+
+    it('should let the Bash CLI pass subject flags to search', async () => {
+        const out = await runShellCli('search --subject "invoice" --days 3650 --json');
+        const json = JSON.parse(out);
+        expect(json).toHaveLength(1);
+        expect(json[0].subject).toBe('Your Invoice from Amazon');
+    });
+
+    it('should keep accepting Bash CLI global flags after shortcut commands', async () => {
+        const out = await runShellCli('sender "mom" --json');
+        const json = JSON.parse(out);
+        expect(json).toHaveLength(1);
+        expect(json[0].subject).toBe('Hello Mom');
+    });
+
+    it('should apply offset in the Bash CLI search path', async () => {
+        const out = await runShellCli('-n 1 -o 2 search --days 3650 --json');
+        const json = JSON.parse(out);
+        expect(json).toHaveLength(1);
+        expect(json[0].id).toBe(101);
+        expect(json[0].subject).toBe('Hello Mom');
+    });
+
+    it('should apply offset in Bash CLI attachment result lists', async () => {
+        const out = await runShellCli('-o 1 attachments --json');
+        expect(out).toBe('');
     });
 
     it('should ignore deleted emails', async () => {

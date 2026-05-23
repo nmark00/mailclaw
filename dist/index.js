@@ -7,27 +7,42 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const commander_1 = require("commander");
 const chalk_1 = __importDefault(require("chalk"));
 const cli_table3_1 = __importDefault(require("cli-table3"));
-const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const node_fs_1 = require("node:fs");
 const node_os_1 = __importDefault(require("node:os"));
 const node_path_1 = __importDefault(require("node:path"));
 const db_finder_js_1 = require("./db-finder.js");
 const mail_actions_js_1 = require("./mail-actions.js");
+const sqlite_js_1 = require("./sqlite.js");
 // Setup CLI
 const program = new commander_1.Command();
 const packageVersion = require('../package.json').version;
 program
     .name('fruitmail')
     .description('Fast Apple Mail search via SQLite')
-    .version(packageVersion);
+    .version(packageVersion)
+    .configureHelp({ showGlobalOptions: true });
 // Global Options
 program
     .option('-n, --limit <number>', 'Max results', '20')
+    .option('-o, --offset <number>', 'Skip first N results', '0')
     .option('-j, --json', 'Output as JSON')
     .option('-c, --csv', 'Output as CSV')
     .option('-q, --quiet', 'Minimal output')
     .option('--db <path>', 'Override database path')
     .option('--copy', 'Force copy mode (safe mode)');
+function parseNonNegativeIntegerOption(value, name, defaultValue) {
+    const rawValue = value ?? String(defaultValue);
+    if (!/^\d+$/.test(rawValue)) {
+        throw new Error(`Invalid --${name}: expected a non-negative integer`);
+    }
+    return Number.parseInt(rawValue, 10);
+}
+function parsePaginationOptions(options) {
+    return {
+        limit: parseNonNegativeIntegerOption(options.limit, 'limit', 20),
+        offset: parseNonNegativeIntegerOption(options.offset, 'offset', 0)
+    };
+}
 function getErrorMessage(error) {
     if (error instanceof Error)
         return error.message;
@@ -197,15 +212,11 @@ async function getDb(options) {
         };
     }
     // Open DB
-    // better-sqlite3 handles read-only via options
-    const db = new better_sqlite3_1.default(dbFile, {
+    const db = new sqlite_js_1.SQLiteDatabase(dbFile, {
         readonly: !options.copy, // Read-only unless we are working on a copy
         fileMustExist: true,
         timeout: 2000 // Busy timeout handled natively
     });
-    // Enable WAL mode support explicitly?
-    // better-sqlite3 usually handles it, but pragma query is safe.
-    // Actually, for read-only on main DB, we just want to read.
     return { db, cleanUp };
 }
 function sanitizeCell(value) {
@@ -323,6 +334,7 @@ function outputResults(rows, options) {
 }
 // Unified Search Builder
 async function runSearch(filters, options) {
+    const pagination = parsePaginationOptions(options);
     const { db, cleanUp } = await getDb(options);
     try {
         const conditions = ['1=1'];
@@ -401,8 +413,9 @@ async function runSearch(filters, options) {
       WHERE ${conditions.join(' AND ')}
       ORDER BY m.date_sent DESC
       LIMIT ?
+      OFFSET ?
     `;
-        params.push(parseInt(options.limit));
+        params.push(pagination.limit, pagination.offset);
         // Synchronous execution
         const rows = db.prepare(sql).all(params);
         const normalizedRows = rows.map((row) => {
