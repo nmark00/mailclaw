@@ -447,16 +447,17 @@ end tell`;
 async function listAccounts() {
     const script = `
 tell application "Mail"
-  set result to {}
+  set acctList to {}
   repeat with acct in every account
     try
-      set acctName to full name of acct
-      set acctEmail to email address of acct
-      set end of result to acctName & "|" & acctEmail
+      set acctName to name of acct
+      set acctEmails to email addresses of acct
+      set acctEmail to item 1 of acctEmails
+      set end of acctList to acctName & "|" & acctEmail
     end try
   end repeat
   set output to ""
-  repeat with entry in result
+  repeat with entry in acctList
     set output to output & (entry as text) & linefeed
   end repeat
   return output
