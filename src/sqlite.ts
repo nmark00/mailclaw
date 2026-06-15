@@ -15,15 +15,34 @@ function normalizeParams(params?: SQLiteParam[] | SQLiteParam): SQLiteParam[] {
     return Array.isArray(params) ? params : [params];
 }
 
+// Mail's Envelope Index uses 64-bit integers (iCloud row IDs) that exceed JS safe range.
+// Convert BigInt to number when in range, otherwise string.
+function normalizeBigInts(row: SQLiteRow): SQLiteRow {
+    const out: SQLiteRow = {};
+    for (const [k, v] of Object.entries(row)) {
+        if (typeof v === 'bigint') {
+            out[k] = v >= BigInt(Number.MIN_SAFE_INTEGER) && v <= BigInt(Number.MAX_SAFE_INTEGER)
+                ? Number(v)
+                : v.toString();
+        } else {
+            out[k] = v;
+        }
+    }
+    return out;
+}
+
 class SQLiteStatement {
-    constructor(private readonly statement: StatementSync) { }
+    constructor(private readonly statement: StatementSync) {
+        this.statement.setReadBigInts(true);
+    }
 
     all(params?: SQLiteParam[] | SQLiteParam): SQLiteRow[] {
-        return this.statement.all(...normalizeParams(params)) as SQLiteRow[];
+        return (this.statement.all(...normalizeParams(params)) as SQLiteRow[]).map(normalizeBigInts);
     }
 
     get(params?: SQLiteParam[] | SQLiteParam): SQLiteRow | undefined {
-        return this.statement.get(...normalizeParams(params)) as SQLiteRow | undefined;
+        const row = this.statement.get(...normalizeParams(params)) as SQLiteRow | undefined;
+        return row ? normalizeBigInts(row) : undefined;
     }
 }
 

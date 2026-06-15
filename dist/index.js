@@ -666,15 +666,24 @@ program.command('delete <id>')
     .action(async (id, options, command) => {
     const opts = getCommandOptions(options, command);
     try {
-        const { db, cleanUp } = await getDb(opts);
+        const numericId = /^\d+$/.test(String(id)) ? parseInt(String(id), 10) : NaN;
         let lookup;
+        // Try SQLite for richer lookup context; fall back to direct AppleScript id
         try {
-            lookup = buildMessageLookupContext(db, String(id));
+            const { db, cleanUp } = await getDb(opts);
+            try {
+                lookup = buildMessageLookupContext(db, String(id));
+            }
+            finally {
+                db.close();
+                if (cleanUp)
+                    cleanUp();
+            }
         }
-        finally {
-            db.close();
-            if (cleanUp)
-                cleanUp();
+        catch {
+            if (!Number.isNaN(numericId)) {
+                lookup = { numericIdCandidates: [numericId], messageIdCandidates: [] };
+            }
         }
         if (!lookup)
             throw new Error('Message not found');
