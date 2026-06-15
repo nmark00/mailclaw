@@ -7,7 +7,7 @@ import { copyFileSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { findDbPath } from './db-finder.js';
-import { getEmailBodyByLookup, openEmailByLookup } from './mail-actions.js';
+import { getEmailBodyByLookup, openEmailByLookup, createDraft, deleteEmailByLookup, replyToEmail, listAccounts, scheduleDraft } from './mail-actions.js';
 import { SQLiteDatabase } from './sqlite.js';
 
 // Setup CLI
@@ -15,8 +15,8 @@ const program = new Command();
 const packageVersion = require('../package.json').version as string;
 
 program
-    .name('fruitmail')
-    .description('Fast Apple Mail search via SQLite')
+    .name('mailclaw')
+    .description('Apple Mail CLI — search, draft, reply, delete, schedule')
     .version(packageVersion)
     .configureHelp({ showGlobalOptions: true });
 
@@ -654,6 +654,147 @@ program.command('stats')
             }
         } catch (error) {
             handleCommandError(error, opts);
+        }
+    });
+
+// Accounts
+program.command('accounts')
+    .description('List Mail.app accounts')
+    .action(async (options, command) => {
+        const opts = getCommandOptions(options, command);
+        try {
+            const accounts = await listAccounts();
+            if (opts.json) {
+                console.log(JSON.stringify(accounts, null, 2));
+            } else {
+                outputResults(accounts, opts);
+            }
+        } catch (error) {
+            handleCommandError(error, opts);
+        }
+    });
+
+// Draft
+program.command('draft')
+    .description('Create a draft in Mail.app')
+    .requiredOption('--to <address...>', 'Recipient address(es)')
+    .requiredOption('--subject <text>', 'Subject line')
+    .requiredOption('--body <text>', 'Message body')
+    .option('--from <address>', 'Sender address (selects account)')
+    .option('--cc <address...>', 'CC address(es)')
+    .option('--bcc <address...>', 'BCC address(es)')
+    .action(async (opts, command) => {
+        const globalOpts = getCommandOptions(opts, command);
+        try {
+            const result = await createDraft({
+                to: opts.to,
+                cc: opts.cc,
+                bcc: opts.bcc,
+                subject: opts.subject,
+                body: opts.body,
+                from: opts.from
+            });
+            if (globalOpts.json) {
+                console.log(JSON.stringify({ ok: true, subject: result.subject }));
+            } else {
+                console.log(chalk.green(`Draft saved: "${result.subject}"`));
+            }
+        } catch (error) {
+            handleCommandError(error, globalOpts);
+        }
+    });
+
+// Delete
+program.command('delete <id>')
+    .description('Delete an email by ID (moves to Trash)')
+    .action(async (id, options, command) => {
+        const opts = getCommandOptions(options, command);
+        try {
+            const { db, cleanUp } = await getDb(opts);
+            let lookup;
+            try {
+                lookup = buildMessageLookupContext(db, String(id));
+            } finally {
+                db.close();
+                if (cleanUp) cleanUp();
+            }
+            if (!lookup) throw new Error('Message not found');
+            await deleteEmailByLookup(lookup);
+            if (opts.json) {
+                console.log(JSON.stringify({ ok: true, id }));
+            } else {
+                console.log(chalk.green(`Deleted message ${id}`));
+            }
+        } catch (error) {
+            handleCommandError(error, opts);
+        }
+    });
+
+// Reply
+program.command('reply <id>')
+    .description('Create a reply draft for a message')
+    .requiredOption('--body <text>', 'Reply body text')
+    .option('--all', 'Reply to all recipients')
+    .action(async (id, opts, command) => {
+        const globalOpts = getCommandOptions(opts, command);
+        try {
+            const { db, cleanUp } = await getDb(globalOpts);
+            let lookup;
+            try {
+                lookup = buildMessageLookupContext(db, String(id));
+            } finally {
+                db.close();
+                if (cleanUp) cleanUp();
+            }
+            if (!lookup) throw new Error('Message not found');
+            const result = await replyToEmail(lookup, opts.body, !!opts.all);
+            if (globalOpts.json) {
+                console.log(JSON.stringify({ ok: true, subject: result.subject }));
+            } else {
+                console.log(chalk.green(`Reply draft saved: "${result.subject}"`));
+            }
+        } catch (error) {
+            handleCommandError(error, globalOpts);
+        }
+    });
+
+// Schedule
+program.command('schedule')
+    .description('Draft an email and schedule it to send automatically')
+    .requiredOption('--to <address...>', 'Recipient address(es)')
+    .requiredOption('--subject <text>', 'Subject line')
+    .requiredOption('--body <text>', 'Message body')
+    .requiredOption('--at <datetime>', 'Send time (YYYY-MM-DD HH:MM or ISO 8601)')
+    .option('--from <address>', 'Sender address (selects account)')
+    .option('--cc <address...>', 'CC address(es)')
+    .option('--bcc <address...>', 'BCC address(es)')
+    .action(async (opts, command) => {
+        const globalOpts = getCommandOptions(opts, command);
+        try {
+            const sendAt = new Date(opts.at);
+            if (isNaN(sendAt.getTime())) {
+                throw new Error(`Invalid --at datetime: "${opts.at}". Use YYYY-MM-DD HH:MM or ISO 8601.`);
+            }
+            if (sendAt <= new Date()) {
+                throw new Error('--at must be in the future');
+            }
+            const result = await scheduleDraft({
+                to: opts.to,
+                cc: opts.cc,
+                bcc: opts.bcc,
+                subject: opts.subject,
+                body: opts.body,
+                from: opts.from,
+                sendAt
+            });
+            if (globalOpts.json) {
+                console.log(JSON.stringify({ ok: true, label: result.label, sendAt: result.sendAt.toISOString() }));
+            } else {
+                console.log(chalk.green(`Draft saved and scheduled to send at ${result.sendAt.toLocaleString()}`));
+                console.log(chalk.gray(`launchd label: ${result.label}`));
+            }
+        } catch (error) {
+            handleCommandError(error, globalOpts);
         }
     });
 
